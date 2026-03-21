@@ -7,7 +7,7 @@ options:
 
 settings:
   base:
-    PRODUCT_BUNDLE_IDENTIFIER: com.koe.app
+    PRODUCT_BUNDLE_IDENTIFIER: nz.owo.koe
     MACOSX_DEPLOYMENT_TARGET: "13.0"
     ENABLE_HARDENED_RUNTIME: YES
 

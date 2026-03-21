@@ -75,11 +75,11 @@
     NSLog(@"[Koe] Hold end detected");
     [self.cuePlayer playStop];
 
-    // Stop audio capture (flushes remaining buffer), then delay before
-    // ending the session to give ASR time to process the final audio
-    [self.audioCaptureManager stopCapture];
+    // Keep recording for 800ms after Fn release to capture trailing speech,
+    // then stop mic and end session
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(300 * NSEC_PER_MSEC)),
                    dispatch_get_main_queue(), ^{
+        [self.audioCaptureManager stopCapture];
         [self.rustBridge endSession];
     });
 }
@@ -100,9 +100,11 @@
     NSLog(@"[Koe] Tap end detected");
     [self.cuePlayer playStop];
 
-    [self.audioCaptureManager stopCapture];
+    // Keep recording for 800ms after tap-end to capture trailing speech,
+    // then stop mic and end session
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(300 * NSEC_PER_MSEC)),
                    dispatch_get_main_queue(), ^{
+        [self.audioCaptureManager stopCapture];
         [self.rustBridge endSession];
     });
 }
