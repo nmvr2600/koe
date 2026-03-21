@@ -26,14 +26,23 @@ Koe takes a different approach:
 
 ## Installation
 
-### Prerequisites
+### Homebrew
+
+```bash
+brew tap owo-network/brew
+brew install owo-network/brew/koe
+```
+
+### Build from Source
+
+#### Prerequisites
 
 - macOS 13.0+
 - Rust toolchain (`rustup`)
 - Xcode with command line tools
 - [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
 
-### Build
+#### Build
 
 ```bash
 git clone https://github.com/missuo/koe.git
@@ -46,7 +55,7 @@ cd KoeApp && xcodegen && cd ..
 make build
 ```
 
-### Run
+#### Run
 
 ```bash
 make run
