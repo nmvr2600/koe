@@ -12,24 +12,25 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - runner: macos-15
-            arch: arm64
+          - arch: arm64
             rust-target: aarch64-apple-darwin
             asset-name: Koe-macOS-arm64.zip
-          - runner: macos-13
-            arch: x86_64
+          - arch: x86_64
             rust-target: x86_64-apple-darwin
             asset-name: Koe-macOS-x86_64.zip
 
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
 
       - name: Build Rust library
         run: cargo build --manifest-path koe-core/Cargo.toml --release --target ${{ matrix.rust-target }}
