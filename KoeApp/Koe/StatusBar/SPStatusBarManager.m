@@ -57,8 +57,12 @@ static const CGFloat kIconSize = 18.0;
     menu.delegate = self;
     menu.autoenablesItems = NO;
 
-    // Status display
-    self.statusMenuItem = [[NSMenuItem alloc] initWithTitle:@"Ready"
+    // Status display with version info
+    NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
+    NSString *version = info[@"CFBundleShortVersionString"] ?: @"?";
+    NSString *build = info[@"CFBundleVersion"] ?: @"?";
+    NSString *statusTitle = [NSString stringWithFormat:@"Ready — v%@ (%@)", version, build];
+    self.statusMenuItem = [[NSMenuItem alloc] initWithTitle:statusTitle
                                                     action:nil
                                              keyEquivalent:@""];
     self.statusMenuItem.enabled = NO;
@@ -538,7 +542,10 @@ static const CGFloat kIconSize = 18.0;
     [self stopAnimation];
 
     if ([state isEqualToString:@"idle"] || [state isEqualToString:@"completed"]) {
-        self.statusMenuItem.title = @"Ready";
+        NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
+        NSString *ver = info[@"CFBundleShortVersionString"] ?: @"?";
+        NSString *bld = info[@"CFBundleVersion"] ?: @"?";
+        self.statusMenuItem.title = [NSString stringWithFormat:@"Ready — v%@ (%@)", ver, bld];
         [self applyIdleIcon];
 
     } else if ([state hasPrefix:@"recording"]) {
