@@ -211,6 +211,9 @@ static NSString *yamlWrite(NSString *yaml, NSString *keyPath, NSString *value) {
 
 // Hotkey
 @property (nonatomic, strong) NSPopUpButton *hotkeyPopup;
+@property (nonatomic, strong) NSButton *startSoundCheckbox;
+@property (nonatomic, strong) NSButton *stopSoundCheckbox;
+@property (nonatomic, strong) NSButton *errorSoundCheckbox;
 
 // Dictionary
 @property (nonatomic, strong) NSTextView *dictionaryTextView;
@@ -281,8 +284,8 @@ static NSString *yamlWrite(NSString *yaml, NSString *keyPath, NSString *value) {
         item.label = @"LLM";
         item.image = [NSImage imageWithSystemSymbolName:@"cpu" accessibilityDescription:@"LLM"];
     } else if ([itemIdentifier isEqualToString:kToolbarHotkey]) {
-        item.label = @"Hotkey";
-        item.image = [NSImage imageWithSystemSymbolName:@"keyboard" accessibilityDescription:@"Hotkey"];
+        item.label = @"Controls";
+        item.image = [NSImage imageWithSystemSymbolName:@"slider.horizontal.3" accessibilityDescription:@"Controls"];
     } else if ([itemIdentifier isEqualToString:kToolbarDictionary]) {
         item.label = @"Dictionary";
         item.image = [NSImage imageWithSystemSymbolName:@"book" accessibilityDescription:@"Dictionary"];
@@ -499,7 +502,7 @@ static NSString *yamlWrite(NSString *yaml, NSString *keyPath, NSString *value) {
     CGFloat fieldX = labelW + 24;
     CGFloat rowH = 32;
 
-    CGFloat contentHeight = 220;
+    CGFloat contentHeight = 320;
     NSView *pane = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, paneWidth, contentHeight)];
 
     CGFloat y = contentHeight - 48;
@@ -528,6 +531,35 @@ static NSString *yamlWrite(NSString *yaml, NSString *keyPath, NSString *value) {
     [self.hotkeyPopup itemAtIndex:4].representedObject = @"right_command";
     [pane addSubview:self.hotkeyPopup];
     y -= rowH + 16;
+
+    // Feedback sounds
+    [pane addSubview:[self formLabel:@"Feedback Sounds" frame:NSMakeRect(16, y, labelW, 22)]];
+
+    self.startSoundCheckbox = [NSButton checkboxWithTitle:@"Play a sound when recording starts"
+                                                   target:nil
+                                                   action:nil];
+    self.startSoundCheckbox.frame = NSMakeRect(fieldX, y - 4, 300, 22);
+    [pane addSubview:self.startSoundCheckbox];
+    y -= 28;
+
+    self.stopSoundCheckbox = [NSButton checkboxWithTitle:@"Play a sound when recording stops"
+                                                  target:nil
+                                                  action:nil];
+    self.stopSoundCheckbox.frame = NSMakeRect(fieldX, y - 4, 300, 22);
+    [pane addSubview:self.stopSoundCheckbox];
+    y -= 28;
+
+    self.errorSoundCheckbox = [NSButton checkboxWithTitle:@"Play a sound when an error occurs"
+                                                   target:nil
+                                                   action:nil];
+    self.errorSoundCheckbox.frame = NSMakeRect(fieldX, y - 4, 300, 22);
+    [pane addSubview:self.errorSoundCheckbox];
+    y -= 32;
+
+    NSTextField *feedbackHint = [self descriptionLabel:@"These toggle the built-in cue sounds for start, stop, and error events."];
+    feedbackHint.frame = NSMakeRect(fieldX, y - 6, paneWidth - fieldX - 32, 32);
+    [pane addSubview:feedbackHint];
+    y -= 44;
 
     // Save / Cancel buttons
     [self addButtonsToPane:pane atY:y width:paneWidth];
@@ -759,6 +791,13 @@ static NSString *yamlWrite(NSString *yaml, NSString *keyPath, NSString *value) {
                 break;
             }
         }
+
+        NSString *startSound = yamlRead(yaml, @"feedback.start_sound");
+        NSString *stopSound = yamlRead(yaml, @"feedback.stop_sound");
+        NSString *errorSound = yamlRead(yaml, @"feedback.error_sound");
+        self.startSoundCheckbox.state = [startSound isEqualToString:@"true"] ? NSControlStateValueOn : NSControlStateValueOff;
+        self.stopSoundCheckbox.state = [stopSound isEqualToString:@"true"] ? NSControlStateValueOn : NSControlStateValueOff;
+        self.errorSoundCheckbox.state = [errorSound isEqualToString:@"true"] ? NSControlStateValueOn : NSControlStateValueOff;
     } else if ([identifier isEqualToString:kToolbarDictionary]) {
         NSString *dictPath = [dir stringByAppendingPathComponent:kDictionaryFile];
         NSString *dictContent = [NSString stringWithContentsOfFile:dictPath encoding:NSUTF8StringEncoding error:nil] ?: @"";
@@ -806,6 +845,14 @@ static NSString *yamlWrite(NSString *yaml, NSString *keyPath, NSString *value) {
     if (self.hotkeyPopup) {
         NSString *selectedHotkey = self.hotkeyPopup.selectedItem.representedObject ?: @"fn";
         yaml = yamlWrite(yaml, @"hotkey.trigger_key", selectedHotkey);
+    }
+    if (self.startSoundCheckbox) {
+        NSString *startSound = (self.startSoundCheckbox.state == NSControlStateValueOn) ? @"true" : @"false";
+        NSString *stopSound = (self.stopSoundCheckbox.state == NSControlStateValueOn) ? @"true" : @"false";
+        NSString *errorSound = (self.errorSoundCheckbox.state == NSControlStateValueOn) ? @"true" : @"false";
+        yaml = yamlWrite(yaml, @"feedback.start_sound", startSound);
+        yaml = yamlWrite(yaml, @"feedback.stop_sound", stopSound);
+        yaml = yamlWrite(yaml, @"feedback.error_sound", errorSound);
     }
 
     // Write config.yaml

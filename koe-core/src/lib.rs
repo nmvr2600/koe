@@ -295,9 +295,9 @@ pub extern "C" fn sp_core_get_feedback_config() -> SPFeedbackConfig {
         }
     } else {
         SPFeedbackConfig {
-            start_sound: true,
-            stop_sound: true,
-            error_sound: true,
+            start_sound: false,
+            stop_sound: false,
+            error_sound: false,
         }
     }
 }
