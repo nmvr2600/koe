@@ -455,7 +455,7 @@ static NSString *defaultCancelKeyForTrigger(NSString *triggerKey) {
     CGFloat fieldW = paneWidth - fieldX - 32;
     CGFloat rowH = 32;
 
-    // Calculate content height
+    // Calculate content height (keep consistent for both providers)
     CGFloat contentHeight = 256;
     NSView *pane = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, paneWidth, contentHeight)];
 
@@ -479,7 +479,7 @@ static NSString *defaultCancelKeyForTrigger(NSString *triggerKey) {
     [pane addSubview:self.asrProviderPopup];
     y -= rowH;
 
-    // App Key (Doubao only)
+    // App Key (Doubao only) - 在 Provider 下方
     self.asrAppKeyField = [self formTextField:NSMakeRect(fieldX, y, fieldW, 22) placeholder:@"Volcengine App ID"];
     [pane addSubview:self.asrAppKeyField];
     NSTextField *appKeyLabel = [self formLabel:@"App Key" frame:NSMakeRect(16, y, labelW, 22)];
@@ -487,9 +487,10 @@ static NSString *defaultCancelKeyForTrigger(NSString *triggerKey) {
     [pane addSubview:appKeyLabel];
     y -= rowH;
 
-    // Access Key (secure by default) - Doubao
+    // Access Key (Doubao) - 在 App Key 下方
     CGFloat eyeW = 28;
     CGFloat secFieldW = fieldW - eyeW - 4;
+
     self.asrAccessKeySecureField = [[NSSecureTextField alloc] initWithFrame:NSMakeRect(fieldX, y, secFieldW, 22)];
     self.asrAccessKeySecureField.placeholderString = @"Volcengine Access Token";
     self.asrAccessKeySecureField.font = [NSFont systemFontOfSize:13];
@@ -503,29 +504,30 @@ static NSString *defaultCancelKeyForTrigger(NSString *triggerKey) {
     NSTextField *accessKeyLabel = [self formLabel:@"Access Key" frame:NSMakeRect(16, y, labelW, 22)];
     accessKeyLabel.tag = 1002;
     [pane addSubview:accessKeyLabel];
-    y -= rowH;
+    y -= rowH;  // Access Key 的下一行
 
-    // Aliyun API Key (hidden by default, shown when aliyun selected)
-    self.asrAliyunApiKeySecureField = [[NSSecureTextField alloc] initWithFrame:NSMakeRect(fieldX, y, secFieldW, 22)];
+    // Aliyun API Key - 紧跟在 Provider 下方
+    // 计算方式：从顶部往下减去 Description(52) + Provider 的第一行位置
+    CGFloat aliyunY = contentHeight - 48 - 52 - rowH;  // = 256 - 48 - 52 - 32 = 124
+    self.asrAliyunApiKeySecureField = [[NSSecureTextField alloc] initWithFrame:NSMakeRect(fieldX, aliyunY, secFieldW, 22)];
     self.asrAliyunApiKeySecureField.placeholderString = @"DashScope API Key (sk-xxx)";
     self.asrAliyunApiKeySecureField.font = [NSFont systemFontOfSize:13];
     self.asrAliyunApiKeySecureField.hidden = YES;
     [pane addSubview:self.asrAliyunApiKeySecureField];
-    self.asrAliyunApiKeyField = [self formTextField:NSMakeRect(fieldX, y, secFieldW, 22) placeholder:@"DashScope API Key (sk-xxx)"];
+    self.asrAliyunApiKeyField = [self formTextField:NSMakeRect(fieldX, aliyunY, secFieldW, 22) placeholder:@"DashScope API Key (sk-xxx)"];
     self.asrAliyunApiKeyField.hidden = YES;
     [pane addSubview:self.asrAliyunApiKeyField];
-    self.asrAliyunApiKeyToggle = [self eyeButtonWithFrame:NSMakeRect(fieldX + secFieldW + 4, y - 1, eyeW, 24)
+    self.asrAliyunApiKeyToggle = [self eyeButtonWithFrame:NSMakeRect(fieldX + secFieldW + 4, aliyunY - 1, eyeW, 24)
                                                 action:@selector(toggleAliyunApiKeyVisibility:)];
     self.asrAliyunApiKeyToggle.hidden = YES;
     [pane addSubview:self.asrAliyunApiKeyToggle];
-    NSTextField *aliyunKeyLabel = [self formLabel:@"API Key" frame:NSMakeRect(16, y, labelW, 22)];
+    NSTextField *aliyunKeyLabel = [self formLabel:@"API Key" frame:NSMakeRect(16, aliyunY, labelW, 22)];
     aliyunKeyLabel.tag = 1003;
     aliyunKeyLabel.hidden = YES;
     [pane addSubview:aliyunKeyLabel];
-    y -= rowH + 16;
 
-    // Save / Cancel buttons
-    [self addButtonsToPane:pane atY:y width:paneWidth];
+    // Save / Cancel buttons - 固定位置在底部
+    [self addButtonsToPane:pane atY:16 width:paneWidth];
 
     return pane;
 }

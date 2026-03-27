@@ -520,7 +520,7 @@ async fn run_session(
                     }
                     Ok(AsrEvent::Final(text)) => {
                         aggregator.update_final(&text);
-                        invoke_interim_text(&text);
+                        invoke_interim_text(aggregator.best_text());
                     }
                     Ok(AsrEvent::Closed) => {
                         asr_done = true;
@@ -702,8 +702,7 @@ async fn wait_for_final(asr: &mut dyn AsrProvider, aggregator: &mut TranscriptAg
         match asr.next_event().await {
             Ok(AsrEvent::Final(text)) => {
                 aggregator.update_final(&text);
-                invoke_interim_text(&text);
-                return;
+                invoke_interim_text(aggregator.best_text());
             }
             Ok(AsrEvent::Interim(text)) => {
                 if !text.is_empty() {
@@ -716,6 +715,10 @@ async fn wait_for_final(asr: &mut dyn AsrProvider, aggregator: &mut TranscriptAg
                 invoke_interim_text(&aggregator.best_text());
             }
             Ok(AsrEvent::Closed) => return,
+            Ok(AsrEvent::Error(msg)) => {
+                log::error!("ASR finalization error event: {msg}");
+                return;
+            }
             Ok(_) => {}
             Err(_) => return,
         }
