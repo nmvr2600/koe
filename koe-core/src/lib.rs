@@ -511,7 +511,7 @@ async fn run_session(
                     Ok(AsrEvent::Interim(text)) => {
                         if !text.is_empty() {
                             aggregator.update_interim(&text);
-                            invoke_interim_text(&text);
+                            invoke_interim_text(&aggregator.best_text());
                         }
                     }
                     Ok(AsrEvent::Definite(text)) => {
@@ -708,7 +708,7 @@ async fn wait_for_final(asr: &mut dyn AsrProvider, aggregator: &mut TranscriptAg
             Ok(AsrEvent::Interim(text)) => {
                 if !text.is_empty() {
                     aggregator.update_interim(&text);
-                    invoke_interim_text(&text);
+                    invoke_interim_text(&aggregator.best_text());
                 }
             }
             Ok(AsrEvent::Definite(text)) => {
