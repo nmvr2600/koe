@@ -4,6 +4,7 @@ use crate::event::AsrEvent;
 use crate::provider::AsrProvider;
 use futures_util::{SinkExt, StreamExt};
 use serde::Serialize;
+use std::collections::VecDeque;
 use tokio::time::{timeout, Duration};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message;
@@ -26,6 +27,7 @@ const SESSION_EVENT_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct AliyunAsrProvider {
     ws: Option<WsStream>,
     input_finished: bool,
+    pending_events: VecDeque<AsrEvent>,
 }
 
 impl AliyunAsrProvider {
@@ -33,6 +35,7 @@ impl AliyunAsrProvider {
         Self {
             ws: None,
             input_finished: false,
+            pending_events: VecDeque::new(),
         }
     }
 
@@ -294,13 +297,18 @@ impl AsrProvider for AliyunAsrProvider {
     }
 
     async fn next_event(&mut self) -> Result<AsrEvent> {
+        if let Some(event) = self.pending_events.pop_front() {
+            return Ok(event);
+        }
+
         if let Some(ref mut ws) = self.ws {
             match ws.next().await {
                 Some(Ok(Message::Text(text))) => {
                     let events = self.parse_server_event(&text)?;
-                    Ok(events
-                        .into_iter()
-                        .next()
+                    self.pending_events.extend(events);
+                    Ok(self
+                        .pending_events
+                        .pop_front()
                         .unwrap_or_else(|| AsrEvent::Interim(String::new())))
                 }
                 Some(Ok(Message::Close(_))) => Ok(AsrEvent::Closed),
