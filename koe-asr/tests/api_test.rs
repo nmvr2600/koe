@@ -66,6 +66,22 @@ fn test_transcript_aggregator_final_overrides_all() {
 }
 
 #[test]
+fn test_transcript_aggregator_keeps_trailing_interim_after_final() {
+    let mut agg = TranscriptAggregator::new();
+    agg.update_final("前两句。");
+    agg.update_interim("前两句。最后一句");
+    assert_eq!(agg.best_text(), "前两句。最后一句");
+}
+
+#[test]
+fn test_transcript_aggregator_merges_overlapping_tail() {
+    let mut agg = TranscriptAggregator::new();
+    agg.update_final("现在需要检查一下代码，");
+    agg.update_interim("检查一下代码，看看最后一句");
+    assert_eq!(agg.best_text(), "现在需要检查一下代码，看看最后一句");
+}
+
+#[test]
 fn test_transcript_aggregator_history_limit() {
     let mut agg = TranscriptAggregator::new();
     for i in 0..20 {

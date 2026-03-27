@@ -558,8 +558,9 @@ async fn run_session(
     }
     invoke_state_changed("finalizing_asr");
 
-    // Wait for final result if we haven't received one yet
-    if !aggregator.has_final_result() && !asr_done {
+    // Keep draining provider events after finish_input so trailing segments
+    // that complete slightly later are not lost.
+    if !asr_done {
         let wait_result = timeout(
             Duration::from_millis(final_wait_timeout_ms),
             wait_for_final(asr.as_mut(), &mut aggregator),
