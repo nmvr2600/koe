@@ -1,0 +1,65 @@
+name: Build Release
+
+on:
+  push:
+    branches: [main, my-main, feat/*]
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: aarch64-apple-darwin
+          toolchain: stable
+
+      - name: Check Xcode version
+        run: xcode-select -p && xcodebuild -version
+
+      - name: Install dependencies
+        run: |
+          brew install xcodegen
+
+      - name: Generate Xcode project
+        run: make generate
+
+      - name: Build Rust library
+        run: make build-rust
+
+      - name: Build macOS App
+        run: make build-xcode
+
+      - name: Package App
+        run: |
+          BUILD_DIR=$(find ~/Library/Developer/Xcode/DerivedData -name "Koe.app" -path "*/Release/*" 2>/dev/null | head -1)
+          if [ -z "$BUILD_DIR" ]; then
+            echo "Error: Koe.app not found"
+            exit 1
+          fi
+          echo "Found app at: $BUILD_DIR"
+          mkdir -p release
+          cp -R "$BUILD_DIR" release/
+          cd release
+          zip -r "Koe-${GITHUB_REF_NAME}.zip" Koe.app
+          echo "PACKAGED_PATH=$(pwd)/Koe-${GITHUB_REF_NAME}.zip" >> $GITHUB_ENV
+
+      - name: Upload to GitHub Releases
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/heads/')
+        with:
+          tag_name: nightly-${{ github.ref_name }}-${{ github.sha }}
+          name: Nightly Build (${{ github.ref_name }})
+          body: |
+            自动构建版本 (分支: ${{ github.ref_name }})
+            提交: ${{ github.sha }}
+            时间: ${{ github.event.head_commit.timestamp }}
+          draft: false
+          prerelease: true
+          files: release/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
