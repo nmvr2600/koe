@@ -34,6 +34,8 @@ pub struct QwenAsrProvider {
     ws: Option<WsStream>,
     input_finished: bool,
     pending_events: VecDeque<AsrEvent>,
+    // Accumulate text from all VAD segments, emit Final at session.finished
+    accumulated_text: String,
 }
 
 impl QwenAsrProvider {
@@ -42,6 +44,7 @@ impl QwenAsrProvider {
             ws: None,
             input_finished: false,
             pending_events: VecDeque::new(),
+            accumulated_text: String::new(),
         }
     }
 
@@ -126,7 +129,13 @@ impl QwenAsrProvider {
                 let stash = raw_json.get("stash").and_then(|v| v.as_str()).unwrap_or("");
                 let preview = format!("{text}{stash}");
                 if !preview.is_empty() {
-                    events.push(AsrEvent::Interim(preview));
+                    // Prepend accumulated text to show full content in preview
+                    let full_preview = if self.accumulated_text.is_empty() {
+                        preview
+                    } else {
+                        format!("{}{}", self.accumulated_text, preview)
+                    };
+                    events.push(AsrEvent::Interim(full_preview));
                 }
             }
             "conversation.item.input_audio_transcription.completed" => {
@@ -145,13 +154,24 @@ impl QwenAsrProvider {
                     .unwrap_or("");
 
                 if !transcript.is_empty() {
-                    log::info!("[Qwen ASR] Final: {}", transcript);
-                    events.push(AsrEvent::Definite(transcript.to_string()));
-                    events.push(AsrEvent::Final(transcript.to_string()));
+                    // Accumulate to total text
+                    if !self.accumulated_text.is_empty() {
+                        self.accumulated_text.push_str(&transcript);
+                    } else {
+                        self.accumulated_text = transcript.to_string();
+                    }
+                    log::info!("[Qwen ASR] Segment final: {} (accumulated: {} chars)", transcript, self.accumulated_text.len());
+                    // Emit Definite with accumulated text so best_text() returns accumulated text
+                    events.push(AsrEvent::Definite(self.accumulated_text.clone()));
                 }
             }
             "session.finished" => {
                 log::info!("[Qwen ASR] Session finished");
+                // Emit accumulated complete text as Final
+                if !self.accumulated_text.is_empty() {
+                    log::info!("[Qwen ASR] Emitting accumulated final: {} chars", self.accumulated_text.len());
+                    events.push(AsrEvent::Final(self.accumulated_text.clone()));
+                }
                 events.push(AsrEvent::Closed);
             }
             "error" => {
