@@ -20,9 +20,11 @@ targets:
       - path: Koe
         excludes:
           - "*.entitlements"
+      - path: Koe/Resources
     settings:
       base:
         INFOPLIST_FILE: Koe/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
         CODE_SIGN_ENTITLEMENTS: Koe/Koe.entitlements
         PRODUCT_NAME: Koe
         HEADER_SEARCH_PATHS:
