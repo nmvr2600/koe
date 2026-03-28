@@ -59,7 +59,7 @@ jobs:
             提交: ${{ github.sha }}
             时间: ${{ github.event.head_commit.timestamp }}
           draft: false
-          prerelease: true
+          prerelease: false
           files: release/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
