@@ -18,10 +18,12 @@ const DASHSCOPE_WS_URL: &str =
 const SESSION_EVENT_TIMEOUT: Duration = Duration::from_secs(5);
 
 // VAD (语音活动检测) 参数配置
-// threshold: 语音检测阈值，0.0-1.0，越高越严格，可减少噪音误触发
-const VAD_THRESHOLD: f32 = 0.5;
+// threshold: 语音检测阈值，推荐 0.0，API 默认 0.2
+// 过低容易把呼吸声识别为"嗯啊"语气词，过高会降低灵敏度
+const VAD_THRESHOLD: f32 = 0.2;
 // silence_duration_ms: 静音持续时间，超过此值视为语音结束
-const VAD_SILENCE_DURATION_MS: u32 = 400;
+// 较低的值(300ms)响应快但容易在自然停顿处断句，较高的值(1200ms)能容忍长句中的停顿
+const VAD_SILENCE_DURATION_MS: u32 = 800;
 // prefix_padding_ms: 语音开始前保留的音频时长，用于捕捉语音起始部分
 const VAD_PREFIX_PADDING_MS: u32 = 100;
 
@@ -36,6 +38,8 @@ pub struct QwenAsrProvider {
     ws: Option<WsStream>,
     input_finished: bool,
     pending_events: VecDeque<AsrEvent>,
+    // 累积所有 VAD 段的最终文本，等 session.finished 时统一发射 Final
+    accumulated_text: String,
 }
 
 impl QwenAsrProvider {
@@ -44,6 +48,7 @@ impl QwenAsrProvider {
             ws: None,
             input_finished: false,
             pending_events: VecDeque::new(),
+            accumulated_text: String::new(),
         }
     }
 
@@ -130,7 +135,13 @@ impl QwenAsrProvider {
                 let stash = raw_json.get("stash").and_then(|v| v.as_str()).unwrap_or("");
                 let preview = format!("{text}{stash}");
                 if !preview.is_empty() {
-                    events.push(AsrEvent::Interim(preview));
+                    // 把之前已确认的段文本拼到前面，让预览显示完整内容
+                    let full_preview = if self.accumulated_text.is_empty() {
+                        preview
+                    } else {
+                        format!("{}{}", self.accumulated_text, preview)
+                    };
+                    events.push(AsrEvent::Interim(full_preview));
                 }
             }
             "conversation.item.input_audio_transcription.completed" => {
@@ -149,13 +160,29 @@ impl QwenAsrProvider {
                     .unwrap_or("");
 
                 if !transcript.is_empty() {
-                    log::info!("[Qwen ASR] Final: {}", transcript);
-                    events.push(AsrEvent::Definite(transcript.to_string()));
-                    events.push(AsrEvent::Final(transcript.to_string()));
+                    // 累积到总文本
+                    if !self.accumulated_text.is_empty() {
+                        self.accumulated_text.push_str(&transcript);
+                    } else {
+                        self.accumulated_text = transcript.to_string();
+                    }
+                    log::info!("[Qwen ASR] Segment final: {} (accumulated: {} chars)", transcript, self.accumulated_text.len());
+                    // 发射包含所有已确认段的 Definite，让 best_text() 返回累积文本
+                    events.push(AsrEvent::Definite(self.accumulated_text.clone()));
                 }
             }
             "session.finished" => {
                 log::info!("[Qwen ASR] Session finished");
+                // 统一发射累积的完整文本作为 Final
+                if !self.accumulated_text.is_empty() {
+                    // 去掉尾部常见的单字语气词（千问容易在句末产生）
+                    let cleaned = strip_trailing_fillers(&self.accumulated_text);
+                    if cleaned != self.accumulated_text {
+                        log::info!("[Qwen ASR] Stripped trailing fillers: '{}' -> '{}'", self.accumulated_text, cleaned);
+                    }
+                    log::info!("[Qwen ASR] Emitting accumulated final: {} chars", cleaned.len());
+                    events.push(AsrEvent::Final(cleaned));
+                }
                 events.push(AsrEvent::Closed);
             }
             "error" => {
@@ -347,6 +374,31 @@ impl AsrProvider for QwenAsrProvider {
     }
 }
 
+/// 去掉文本尾部的单字语气词（千问 ASR 容易在句末/段末产生）
+fn strip_trailing_fillers(text: &str) -> String {
+    const FILLERS: &[char] = &['嗯', '啊', '呃', '哦', '呀', '噢', '唔', '额', '呢', '吧'];
+    let trimmed = text.trim_end();
+    let mut end = trimmed.len();
+    // 从尾部开始，连续去掉语气词 + 可选的标点/空格
+    while end > 0 {
+        let prev = if end > 0 { trimmed[..end].trim_end_matches(|c: char| c == '，' || c == ',' || c == '。' || c == ' ' || c == '、') } else { trimmed };
+        if prev.is_empty() {
+            break;
+        }
+        let last_char = prev.chars().last().unwrap();
+        if FILLERS.contains(&last_char) {
+            end = prev.len() - last_char.len_utf8();
+        } else {
+            break;
+        }
+    }
+    if end == 0 {
+        String::new()
+    } else {
+        trimmed[..end].to_string()
+    }
+}
+
 #[derive(Serialize)]
 struct ClientEvent {
     #[serde(rename = "event_id")]
@@ -384,7 +436,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_final_transcript() {
+    fn parses_completed_segment_as_definite_only() {
         let mut provider = QwenAsrProvider::new();
         let events = provider
             .parse_server_event(
@@ -395,13 +447,11 @@ mod tests {
             )
             .unwrap();
 
+        // completed 事件现在只发射 Definite，Final 留到 session.finished 统一发射
+        assert_eq!(events.len(), 1);
         assert!(matches!(
             events.first(),
             Some(AsrEvent::Definite(text)) if text == "你好世界"
-        ));
-        assert!(matches!(
-            events.get(1),
-            Some(AsrEvent::Final(text)) if text == "你好世界"
         ));
     }
 }
