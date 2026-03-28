@@ -581,4 +581,75 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert!(matches!(events[0], AsrEvent::Closed));
     }
+
+    // Task 4: Additional event type tests
+    #[test]
+    fn session_created_emits_no_events() {
+        let mut provider = QwenAsrProvider::new();
+        let events = provider
+            .parse_server_event(r#"{"type":"session.created"}"#)
+            .unwrap();
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn session_updated_emits_connected() {
+        let mut provider = QwenAsrProvider::new();
+        let events = provider
+            .parse_server_event(r#"{"type":"session.updated"}"#)
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(events[0], AsrEvent::Connected));
+    }
+
+    #[test]
+    fn error_event_emits_error() {
+        let mut provider = QwenAsrProvider::new();
+        let events = provider
+            .parse_server_event(
+                r#"{"type":"error","error":{"message":"auth failed"}}"#,
+            )
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(events[0], AsrEvent::Error(ref msg) if msg == "auth failed"));
+    }
+
+    #[test]
+    fn unknown_event_type_emits_nothing() {
+        let mut provider = QwenAsrProvider::new();
+        let events = provider
+            .parse_server_event(r#"{"type":"some.future.event"}"#)
+            .unwrap();
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn completed_with_empty_transcript_emits_nothing() {
+        let mut provider = QwenAsrProvider::new();
+        let events = provider
+            .parse_server_event(
+                r#"{"type":"conversation.item.input_audio_transcription.completed","transcript":""}"#,
+            )
+            .unwrap();
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn completed_with_nested_transcript_path() {
+        let mut provider = QwenAsrProvider::new();
+        // 测试 item.content[0].transcript 备选路径
+        let events = provider
+            .parse_server_event(
+                r#"{
+                    "type":"conversation.item.input_audio_transcription.completed",
+                    "item":{"content":[{"transcript":"嵌套路径文本"}]}
+                }"#,
+            )
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            events[0],
+            AsrEvent::Definite(ref t) if t == "嵌套路径文本"
+        ));
+    }
 }
