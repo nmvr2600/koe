@@ -25,8 +25,6 @@ pub struct AsrConfig {
     pub enable_nonstream: bool,
     /// Hotwords for improved recognition accuracy
     pub hotwords: Vec<String>,
-    /// Language code for ASR (e.g. "zh", "en") - used by Qwen ASR
-    pub language: Option<String>,
 }
 
 impl Default for AsrConfig {
@@ -44,7 +42,6 @@ impl Default for AsrConfig {
             enable_punc: true,
             enable_nonstream: true,
             hotwords: Vec::new(),
-            language: Some("zh".to_string()),
         }
     }
 }

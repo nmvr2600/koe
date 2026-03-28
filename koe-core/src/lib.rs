@@ -266,7 +266,6 @@ pub extern "C" fn sp_core_session_begin(context: SPSessionContext) -> i32 {
                 enable_punc: false,
                 enable_nonstream: false,
                 hotwords: Vec::new(),
-                language: Some(qwen.language.clone()),
             };
             (config, "qwen".to_string())
         }
@@ -285,7 +284,6 @@ pub extern "C" fn sp_core_session_begin(context: SPSessionContext) -> i32 {
                 enable_punc: doubao.enable_punc,
                 enable_nonstream: doubao.enable_nonstream,
                 hotwords: core.dictionary.clone(),
-                language: Some("zh".to_string()),
             };
             (config, "doubao".to_string())
         }
