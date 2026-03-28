@@ -28,6 +28,10 @@ static const CGFloat kIconSize = 18.0;
 @property (nonatomic, assign) NSInteger animationFrame;
 @property (nonatomic, copy) NSString *currentState;
 
+// ASR Provider
+@property (nonatomic, strong) NSMenuItem *asrProviderMenuItem;
+@property (nonatomic, strong) NSMenuItem *currentAsrDisplayItem;
+
 @end
 
 static NSString *displayNameForHotkeyValue(NSString *value) {
@@ -162,6 +166,21 @@ static NSString *displayNameForHotkeyValue(NSString *value) {
     microphoneItem.submenu = micSubmenu;
     [menu addItem:microphoneItem];
 
+    // ASR Provider selection submenu
+    self.asrProviderMenuItem = [[NSMenuItem alloc] initWithTitle:@"ASR Provider"
+                                                          action:nil
+                                                   keyEquivalent:@""];
+    NSMenu *asrSubmenu = [[NSMenu alloc] initWithTitle:@"ASR Provider"];
+    self.asrProviderMenuItem.submenu = asrSubmenu;
+    [menu addItem:self.asrProviderMenuItem];
+
+    // Current ASR Provider display (like stats)
+    self.currentAsrDisplayItem = [[NSMenuItem alloc] initWithTitle:@"  ASR: Checking..."
+                                                           action:nil
+                                                    keyEquivalent:@""];
+    self.currentAsrDisplayItem.enabled = NO;
+    [menu addItem:self.currentAsrDisplayItem];
+
     [menu addItem:[NSMenuItem separatorItem]];
 
     NSMenuItem *setupWizard = [[NSMenuItem alloc] initWithTitle:@"Setup Wizard..."
@@ -212,6 +231,8 @@ static NSString *displayNameForHotkeyValue(NSString *value) {
     [self refreshPermissionStatus];
     [self refreshStats];
     [self refreshMicrophoneSubmenu:menu];
+    [self refreshAsrProviderSubmenu:menu];
+    [self refreshCurrentAsrDisplay];
     if ([self.delegate respondsToSelector:@selector(statusBarMenuDidOpen)]) {
         [self.delegate statusBarMenuDidOpen];
     }
@@ -409,6 +430,235 @@ static NSString *displayNameForHotkeyValue(NSString *value) {
     if ([self.delegate respondsToSelector:@selector(statusBarDidSelectAudioDeviceWithUID:)]) {
         [self.delegate statusBarDidSelectAudioDeviceWithUID:uid];
     }
+}
+
+#pragma mark - ASR Provider Selection
+
+- (void)refreshAsrProviderSubmenu:(NSMenu *)menu {
+    // Find the ASR Provider menu item
+    NSInteger asrIndex = [menu indexOfItem:self.asrProviderMenuItem];
+    if (asrIndex == -1) return;
+
+    NSMenu *submenu = [menu itemAtIndex:asrIndex].submenu;
+    [submenu removeAllItems];
+
+    // Read config
+    NSString *configPath = [NSHomeDirectory() stringByAppendingPathComponent:@".koe/config.yaml"];
+    NSString *yaml = [NSString stringWithContentsOfFile:configPath encoding:NSUTF8StringEncoding error:nil] ?: @"";
+
+    NSString *currentProvider = [self yamlRead:yaml key:@"asr.provider"];
+    if (currentProvider.length == 0) currentProvider = @"doubao";
+
+    // Check which providers are configured (have api_key)
+    NSString *doubaoAccessKey = [self yamlRead:yaml key:@"asr.doubao.access_key"];
+    NSString *qwenApiKey = [self yamlRead:yaml key:@"asr.qwen.api_key"];
+
+    BOOL hasDoubao = doubaoAccessKey.length > 0;
+    BOOL hasQwen = qwenApiKey.length > 0;
+
+    // Only show configured providers
+    NSInteger itemCount = 0;
+
+    if (hasDoubao) {
+        NSMenuItem *doubaoItem = [[NSMenuItem alloc] initWithTitle:@"Doubao (豆包)"
+                                                          action:@selector(selectAsrProvider:)
+                                                   keyEquivalent:@""];
+        doubaoItem.target = self;
+        doubaoItem.representedObject = @"doubao";
+        doubaoItem.state = [currentProvider isEqualToString:@"doubao"] ? NSControlStateValueOn : NSControlStateValueOff;
+        [submenu addItem:doubaoItem];
+        itemCount++;
+    }
+
+    if (hasQwen) {
+        NSMenuItem *qwenItem = [[NSMenuItem alloc] initWithTitle:@"Qwen (阿里云)"
+                                                        action:@selector(selectAsrProvider:)
+                                                 keyEquivalent:@""];
+        qwenItem.target = self;
+        qwenItem.representedObject = @"qwen";
+        qwenItem.state = [currentProvider isEqualToString:@"qwen"] ? NSControlStateValueOn : NSControlStateValueOff;
+        [submenu addItem:qwenItem];
+        itemCount++;
+    }
+
+    // If no providers configured, show disabled placeholder
+    if (itemCount == 0) {
+        NSMenuItem *noProviderItem = [[NSMenuItem alloc] initWithTitle:@"No providers configured"
+                                                                action:nil
+                                                         keyEquivalent:@""];
+        noProviderItem.enabled = NO;
+        [submenu addItem:noProviderItem];
+    }
+
+    // Update menu item visibility (hide if no providers)
+    self.asrProviderMenuItem.hidden = (itemCount == 0);
+}
+
+- (void)refreshCurrentAsrDisplay {
+    NSString *configPath = [NSHomeDirectory() stringByAppendingPathComponent:@".koe/config.yaml"];
+    NSString *yaml = [NSString stringWithContentsOfFile:configPath encoding:NSUTF8StringEncoding error:nil] ?: @"";
+
+    NSString *currentProvider = [self yamlRead:yaml key:@"asr.provider"];
+    if (currentProvider.length == 0) currentProvider = @"doubao";
+
+    // Check if current provider is configured
+    NSString *doubaoAccessKey = [self yamlRead:yaml key:@"asr.doubao.access_key"];
+    NSString *qwenApiKey = [self yamlRead:yaml key:@"asr.qwen.api_key"];
+    BOOL hasDoubao = doubaoAccessKey.length > 0;
+    BOOL hasQwen = qwenApiKey.length > 0;
+
+    // Map to display name
+    NSString *displayName;
+    if ([currentProvider isEqualToString:@"doubao"]) {
+        displayName = hasDoubao ? @"Doubao" : @"Doubao (not configured)";
+    } else if ([currentProvider isEqualToString:@"qwen"]) {
+        displayName = hasQwen ? @"Qwen" : @"Qwen (not configured)";
+    } else {
+        displayName = currentProvider;
+    }
+
+    self.currentAsrDisplayItem.title = [NSString stringWithFormat:@"  ASR: %@", displayName];
+
+    // Hide if no providers configured
+    BOOL hasAnyProvider = hasDoubao || hasQwen;
+    self.currentAsrDisplayItem.hidden = !hasAnyProvider;
+}
+
+- (void)selectAsrProvider:(NSMenuItem *)sender {
+    NSString *provider = sender.representedObject;
+    if (!provider) return;
+
+    // Read current config
+    NSString *configPath = [NSHomeDirectory() stringByAppendingPathComponent:@".koe/config.yaml"];
+    NSString *yaml = [NSString stringWithContentsOfFile:configPath encoding:NSUTF8StringEncoding error:nil] ?: @"";
+
+    // Update provider
+    yaml = [self yamlWrite:yaml key:@"asr.provider" value:provider];
+
+    // Save config
+    NSError *error = nil;
+    [yaml writeToFile:configPath atomically:YES encoding:NSUTF8StringEncoding error:&error];
+
+    if (error) {
+        NSLog(@"[Koe] Failed to save ASR provider: %@", error.localizedDescription);
+        return;
+    }
+
+    NSLog(@"[Koe] ASR provider switched to: %@", provider);
+
+    // Reload config via delegate
+    if ([self.delegate respondsToSelector:@selector(statusBarDidSelectReloadConfig)]) {
+        [self.delegate statusBarDidSelectReloadConfig];
+    }
+}
+
+// Simple YAML value reader (basic implementation)
+- (NSString *)yamlRead:(NSString *)yaml key:(NSString *)key {
+    NSArray<NSString *> *parts = [key componentsSeparatedByString:@"."];
+    NSArray<NSString *> *lines = [yaml componentsSeparatedByString:@"\n"];
+
+    NSInteger currentDepth = 0;
+    for (NSString *line in lines) {
+        NSString *trimmed = [line stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+        if (trimmed.length == 0 || [trimmed hasPrefix:@"#"]) continue;
+
+        // Count leading spaces for depth
+        NSUInteger leadingSpaces = 0;
+        for (NSUInteger i = 0; i < line.length; i++) {
+            if ([line characterAtIndex:i] == ' ') {
+                leadingSpaces++;
+            } else {
+                break;
+            }
+        }
+        NSInteger depth = leadingSpaces / 2;
+
+        if (depth == currentDepth && currentDepth < parts.count) {
+            NSString *expectedKey = parts[currentDepth];
+            NSString *prefix = [expectedKey stringByAppendingString:@":"];
+
+            if ([trimmed hasPrefix:prefix]) {
+                if (currentDepth == parts.count - 1) {
+                    // Found the value
+                    NSString *value = [trimmed substringFromIndex:prefix.length];
+                    value = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                    // Strip quotes
+                    if (value.length >= 2 && [value hasPrefix:@"\""] && [value hasSuffix:@"\""]) {
+                        value = [value substringWithRange:NSMakeRange(1, value.length - 2)];
+                    }
+                    // Strip inline comment
+                    NSRange commentRange = [value rangeOfString:@" #"];
+                    if (commentRange.location != NSNotFound) {
+                        value = [[value substringToIndex:commentRange.location]
+                                 stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                    }
+                    return value;
+                } else {
+                    currentDepth++;
+                }
+            }
+        }
+    }
+
+    return nil;
+}
+
+// Simple YAML value writer (basic implementation)
+- (NSString *)yamlWrite:(NSString *)yaml key:(NSString *)key value:(NSString *)value {
+    NSArray<NSString *> *parts = [key componentsSeparatedByString:@"."];
+    NSMutableArray<NSString *> *lines = [[yaml componentsSeparatedByString:@"\n"] mutableCopy];
+
+    // Find or create the key
+    NSInteger currentDepth = 0;
+    NSInteger lastMatchingLine = -1;
+
+    for (NSInteger i = 0; i < (NSInteger)lines.count; i++) {
+        NSString *line = lines[i];
+        NSString *trimmed = [line stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+        if (trimmed.length == 0 || [trimmed hasPrefix:@"#"]) continue;
+
+        NSUInteger leadingSpaces = 0;
+        for (NSUInteger j = 0; j < line.length; j++) {
+            if ([line characterAtIndex:j] == ' ') {
+                leadingSpaces++;
+            } else {
+                break;
+            }
+        }
+        NSInteger depth = leadingSpaces / 2;
+
+        if (depth == currentDepth && currentDepth < parts.count) {
+            NSString *expectedKey = parts[currentDepth];
+            NSString *prefix = [expectedKey stringByAppendingString:@":"];
+
+            if ([trimmed hasPrefix:prefix]) {
+                if (currentDepth == parts.count - 1) {
+                    // Found it, update the value
+                    NSString *indent = [@"" stringByPaddingToLength:depth * 2 withString:@" " startingAtIndex:0];
+                    lines[i] = [NSString stringWithFormat:@"%@%@: %@", indent, expectedKey, value];
+                    return [lines componentsJoinedByString:@"\n"];
+                } else {
+                    currentDepth++;
+                    lastMatchingLine = i;
+                }
+            }
+        }
+    }
+
+    // Key not found, append it
+    if (lastMatchingLine >= 0) {
+        // Insert after the parent section
+        NSString *indent = [@"" stringByPaddingToLength:(parts.count - 1) * 2 withString:@" " startingAtIndex:0];
+        NSString *newLine = [NSString stringWithFormat:@"%@%@: %@", indent, parts.lastObject, value];
+        [lines insertObject:newLine atIndex:lastMatchingLine + 1];
+    } else {
+        // Add to end
+        NSString *indent = [@"" stringByPaddingToLength:(parts.count - 1) * 2 withString:@" " startingAtIndex:0];
+        NSString *newLine = [NSString stringWithFormat:@"%@%@: %@", indent, parts.lastObject, value];
+        [lines addObject:newLine];
+    }
+
+    return [lines componentsJoinedByString:@"\n"];
 }
 
 #pragma mark - Helpers
