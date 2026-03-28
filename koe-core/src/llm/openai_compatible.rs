@@ -19,6 +19,7 @@ pub struct OpenAiCompatibleProvider {
 
 impl OpenAiCompatibleProvider {
     pub fn new(
+        client: Client,
         base_url: String,
         api_key: String,
         model: String,
@@ -26,13 +27,7 @@ impl OpenAiCompatibleProvider {
         top_p: f64,
         max_output_tokens: u32,
         max_token_parameter: LlmMaxTokenParameter,
-        timeout_ms: u64,
     ) -> Self {
-        let client = Client::builder()
-            .timeout(Duration::from_millis(timeout_ms))
-            .build()
-            .expect("failed to create HTTP client");
-
         Self {
             client,
             base_url,
@@ -46,9 +41,24 @@ impl OpenAiCompatibleProvider {
     }
 }
 
+pub fn build_http_client(timeout_ms: u64) -> std::result::Result<Client, reqwest::Error> {
+    Client::builder()
+        .timeout(Duration::from_millis(timeout_ms))
+        .pool_idle_timeout(Duration::from_secs(90))
+        .pool_max_idle_per_host(2)
+        .tcp_keepalive(Some(Duration::from_secs(30)))
+        .http2_keep_alive_interval(Duration::from_secs(30))
+        .http2_keep_alive_timeout(Duration::from_secs(30))
+        .http2_keep_alive_while_idle(true)
+        .build()
+}
+
 impl LlmProvider for OpenAiCompatibleProvider {
     async fn correct(&self, request: &CorrectionRequest) -> Result<String> {
-        let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
+        let url = format!(
+            "{}/chat/completions",
+            self.base_url.trim_end_matches('/')
+        );
 
         let mut body = json!({
             "model": self.model,
@@ -70,6 +80,9 @@ impl LlmProvider for OpenAiCompatibleProvider {
             LlmMaxTokenParameter::MaxCompletionTokens => "max_completion_tokens",
         };
         body[token_field_name] = json!(self.max_output_tokens);
+        if matches!(self.max_token_parameter, LlmMaxTokenParameter::MaxCompletionTokens) {
+            body["reasoning_effort"] = json!("none");
+        }
 
         log::debug!("LLM request to {url}");
 
@@ -92,7 +105,9 @@ impl LlmProvider for OpenAiCompatibleProvider {
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            return Err(KoeError::LlmFailed(format!("HTTP {status}: {text}")));
+            return Err(KoeError::LlmFailed(format!(
+                "HTTP {status}: {text}"
+            )));
         }
 
         let json: Value = response
