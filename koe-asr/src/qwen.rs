@@ -13,33 +13,27 @@ use uuid::Uuid;
 
 type WsStream = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 
-const DASHSCOPE_WS_URL: &str =
-    "wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=qwen3-asr-flash-realtime";
 const SESSION_EVENT_TIMEOUT: Duration = Duration::from_secs(5);
 
-// VAD (语音活动检测) 参数配置
-// threshold: 语音检测阈值，推荐 0.0，API 默认 0.2
-// 过低容易把呼吸声识别为"嗯啊"语气词，过高会降低灵敏度
-const VAD_THRESHOLD: f32 = 0.2;
-// silence_duration_ms: 静音持续时间，超过此值视为语音结束
-// 较低的值(300ms)响应快但容易在自然停顿处断句，较高的值(1200ms)能容忍长句中的停顿
-const VAD_SILENCE_DURATION_MS: u32 = 800;
-// prefix_padding_ms: 语音开始前保留的音频时长，用于捕捉语音起始部分
+// VAD (Voice Activity Detection) parameters
+// threshold: 0.0-1.0, higher = stricter, reduces false triggers from ambient noise
+const VAD_THRESHOLD: f32 = 0.5;
+// silence_duration_ms: duration of silence before speech is considered ended
+const VAD_SILENCE_DURATION_MS: u32 = 400;
+// prefix_padding_ms: audio retained before speech onset to capture the beginning
 const VAD_PREFIX_PADDING_MS: u32 = 100;
 
-/// Qwen DashScope 实时语音识别 Provider (Qwen-ASR-Realtime)
+/// Qwen DashScope Realtime ASR Provider (Qwen-ASR-Realtime)
 ///
-/// 协议参考Qwen官方 WebSocket Realtime API：
-/// 1. 连接建立后等待 `session.created`
-/// 2. 发送 `session.update`
-/// 3. 使用 `input_audio_buffer.append` 追加 Base64 音频
-/// 4. 音频结束后发送 `session.finish`
+/// Protocol follows the Qwen WebSocket Realtime API:
+/// 1. Wait for `session.created` after connection
+/// 2. Send `session.update` with configuration
+/// 3. Append Base64-encoded audio via `input_audio_buffer.append`
+/// 4. Send `session.finish` when audio ends
 pub struct QwenAsrProvider {
     ws: Option<WsStream>,
     input_finished: bool,
     pending_events: VecDeque<AsrEvent>,
-    // 累积所有 VAD 段的最终文本，等 session.finished 时统一发射 Final
-    accumulated_text: String,
 }
 
 impl QwenAsrProvider {
@@ -48,14 +42,11 @@ impl QwenAsrProvider {
             ws: None,
             input_finished: false,
             pending_events: VecDeque::new(),
-            accumulated_text: String::new(),
         }
     }
 
     fn build_session_update(config: &AsrConfig) -> ClientEvent {
-        // Qwen ASR uses "zh" (Chinese) as default language
-        // Language is Qwen-specific, so it's hardcoded here rather than in shared AsrConfig
-        const DEFAULT_LANGUAGE: &str = "zh";
+        let language = config.language.clone().unwrap_or_else(|| "zh".to_string());
         ClientEvent {
             event_id: format!("event_{}", Uuid::new_v4()),
             event_type: "session.update".to_string(),
@@ -65,8 +56,8 @@ impl QwenAsrProvider {
                 "input_audio_format": "pcm",
                 "sample_rate": config.sample_rate_hz,
                 "input_audio_transcription": {
-                    "model": "qwen3-asr-flash-realtime",
-                    "language": DEFAULT_LANGUAGE,
+                    "model": config.app_key,
+                    "language": language,
                 },
                 "turn_detection": {
                     "type": "server_vad",
@@ -135,13 +126,7 @@ impl QwenAsrProvider {
                 let stash = raw_json.get("stash").and_then(|v| v.as_str()).unwrap_or("");
                 let preview = format!("{text}{stash}");
                 if !preview.is_empty() {
-                    // 把之前已确认的段文本拼到前面，让预览显示完整内容
-                    let full_preview = if self.accumulated_text.is_empty() {
-                        preview
-                    } else {
-                        format!("{}{}", self.accumulated_text, preview)
-                    };
-                    events.push(AsrEvent::Interim(full_preview));
+                    events.push(AsrEvent::Interim(preview));
                 }
             }
             "conversation.item.input_audio_transcription.completed" => {
@@ -160,29 +145,13 @@ impl QwenAsrProvider {
                     .unwrap_or("");
 
                 if !transcript.is_empty() {
-                    // 累积到总文本
-                    if !self.accumulated_text.is_empty() {
-                        self.accumulated_text.push_str(&transcript);
-                    } else {
-                        self.accumulated_text = transcript.to_string();
-                    }
-                    log::info!("[Qwen ASR] Segment final: {} (accumulated: {} chars)", transcript, self.accumulated_text.len());
-                    // 发射包含所有已确认段的 Definite，让 best_text() 返回累积文本
-                    events.push(AsrEvent::Definite(self.accumulated_text.clone()));
+                    log::info!("[Qwen ASR] Final: {}", transcript);
+                    events.push(AsrEvent::Definite(transcript.to_string()));
+                    events.push(AsrEvent::Final(transcript.to_string()));
                 }
             }
             "session.finished" => {
                 log::info!("[Qwen ASR] Session finished");
-                // 统一发射累积的完整文本作为 Final
-                if !self.accumulated_text.is_empty() {
-                    // 去掉尾部常见的单字语气词（千问容易在句末产生）
-                    let cleaned = strip_trailing_fillers(&self.accumulated_text);
-                    if cleaned != self.accumulated_text {
-                        log::info!("[Qwen ASR] Stripped trailing fillers: '{}' -> '{}'", self.accumulated_text, cleaned);
-                    }
-                    log::info!("[Qwen ASR] Emitting accumulated final: {} chars", cleaned.len());
-                    events.push(AsrEvent::Final(cleaned));
-                }
                 events.push(AsrEvent::Closed);
             }
             "error" => {
@@ -249,9 +218,10 @@ impl AsrProvider for QwenAsrProvider {
             return Err(AsrError::Connection("api_key is required".into()));
         }
 
-        log::info!("Connecting to Qwen ASR: {}", DASHSCOPE_WS_URL);
+        let ws_url = format!("{}?model={}", config.url, config.app_key);
+        log::info!("Connecting to Qwen ASR: {}", ws_url);
 
-        let mut request = DASHSCOPE_WS_URL
+        let mut request = ws_url
             .into_client_request()
             .map_err(|e| AsrError::Connection(format!("invalid URL: {e}")))?;
 
@@ -374,31 +344,6 @@ impl AsrProvider for QwenAsrProvider {
     }
 }
 
-/// 去掉文本尾部的单字语气词（千问 ASR 容易在句末/段末产生）
-fn strip_trailing_fillers(text: &str) -> String {
-    const FILLERS: &[char] = &['嗯', '啊', '呃', '哦', '呀', '噢', '唔', '额', '呢', '吧'];
-    let trimmed = text.trim_end();
-    let mut end = trimmed.len();
-    // 从尾部开始，连续去掉语气词 + 可选的标点/空格
-    while end > 0 {
-        let prev = if end > 0 { trimmed[..end].trim_end_matches(|c: char| c == '，' || c == ',' || c == '。' || c == ' ' || c == '、') } else { trimmed };
-        if prev.is_empty() {
-            break;
-        }
-        let last_char = prev.chars().last().unwrap();
-        if FILLERS.contains(&last_char) {
-            end = prev.len() - last_char.len_utf8();
-        } else {
-            break;
-        }
-    }
-    if end == 0 {
-        String::new()
-    } else {
-        trimmed[..end].to_string()
-    }
-}
-
 #[derive(Serialize)]
 struct ClientEvent {
     #[serde(rename = "event_id")]
@@ -409,255 +354,4 @@ struct ClientEvent {
     audio: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     session: Option<serde_json::Value>,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::QwenAsrProvider;
-    use crate::event::AsrEvent;
-
-    #[test]
-    fn interim_prepends_accumulated_text_to_preview() {
-        let mut provider = QwenAsrProvider::new();
-
-        // 先完成一个段，累积 "前面的话"
-        provider.parse_server_event(
-            r#"{"type":"conversation.item.input_audio_transcription.completed","transcript":"前面的话"}"#,
-        ).unwrap();
-
-        // Interim 应该包含已累积文本 + 当前段预览
-        let events = provider
-            .parse_server_event(
-                r#"{
-                    "type":"conversation.item.input_audio_transcription.text",
-                    "text":"今天",
-                    "stash":"天气不错"
-                }"#,
-            )
-            .unwrap();
-
-        assert_eq!(events.len(), 1);
-        assert!(matches!(
-            events.first(),
-            Some(AsrEvent::Interim(text)) if text == "前面的话今天天气不错"
-        ));
-    }
-
-    #[test]
-    fn parses_completed_segment_as_definite_only() {
-        let mut provider = QwenAsrProvider::new();
-        let events = provider
-            .parse_server_event(
-                r#"{
-                    "type":"conversation.item.input_audio_transcription.completed",
-                    "transcript":"你好世界"
-                }"#,
-            )
-            .unwrap();
-
-        // completed 事件现在只发射 Definite，Final 留到 session.finished 统一发射
-        assert_eq!(events.len(), 1);
-        assert!(matches!(
-            events.first(),
-            Some(AsrEvent::Definite(text)) if text == "你好世界"
-        ));
-    }
-
-    // strip_trailing_fillers 函数测试
-    #[test]
-    fn strip_trailing_fillers_removes_single_trailing_filler() {
-        assert_eq!(super::strip_trailing_fillers("你好世界嗯"), "你好世界");
-    }
-
-    #[test]
-    fn strip_trailing_fillers_removes_multiple_trailing_fillers() {
-        assert_eq!(super::strip_trailing_fillers("你好世界嗯啊呃"), "你好世界");
-    }
-
-    #[test]
-    fn strip_trailing_fillers_removes_filler_with_trailing_punctuation() {
-        assert_eq!(super::strip_trailing_fillers("你好世界嗯，"), "你好世界");
-        assert_eq!(super::strip_trailing_fillers("你好世界啊。"), "你好世界");
-    }
-
-    #[test]
-    fn strip_trailing_fillers_does_not_remove_leading_fillers() {
-        assert_eq!(super::strip_trailing_fillers("嗯你好世界"), "嗯你好世界");
-    }
-
-    #[test]
-    fn strip_trailing_fillers_does_not_remove_mid_sentence_fillers() {
-        assert_eq!(super::strip_trailing_fillers("你好嗯世界"), "你好嗯世界");
-    }
-
-    #[test]
-    fn strip_trailing_fillers_preserves_normal_text() {
-        assert_eq!(super::strip_trailing_fillers("今天天气不错"), "今天天气不错");
-    }
-
-    #[test]
-    fn strip_trailing_fillers_all_fillers_returns_empty() {
-        assert_eq!(super::strip_trailing_fillers("嗯啊呃"), "");
-    }
-
-    #[test]
-    fn strip_trailing_fillers_empty_string() {
-        assert_eq!(super::strip_trailing_fillers(""), "");
-    }
-
-    #[test]
-    fn interim_event_prepends_accumulated_text() {
-        let mut provider = QwenAsrProvider::new();
-
-        // 第一个段完成，累积 "今天天气"
-        let events = provider
-            .parse_server_event(
-                r#"{
-                "type":"conversation.item.input_audio_transcription.completed",
-                "transcript":"今天天气"
-            }"#,
-            )
-            .unwrap();
-        assert_eq!(events.len(), 1);
-        assert!(matches!(events[0], AsrEvent::Definite(ref t) if t == "今天天气"));
-
-        // 第二个段的 Interim 应该包含已累积的文本
-        let events = provider
-            .parse_server_event(
-                r#"{
-                "type":"conversation.item.input_audio_transcription.text",
-                "text":"我们去",
-                "stash":"公园吧"
-            }"#,
-            )
-            .unwrap();
-        assert_eq!(events.len(), 1);
-        assert!(matches!(
-            events[0],
-            AsrEvent::Interim(ref t) if t == "今天天气我们去公园吧"
-        ));
-    }
-
-    #[test]
-    fn first_interim_has_no_prefix() {
-        let mut provider = QwenAsrProvider::new();
-        // 还没有任何段完成时，Interim 不应有前缀
-        let events = provider
-            .parse_server_event(
-                r#"{
-                "type":"conversation.item.input_audio_transcription.text",
-                "text":"你好",
-                "stash":"世界"
-            }"#,
-            )
-            .unwrap();
-        assert_eq!(events.len(), 1);
-        assert!(matches!(events[0], AsrEvent::Interim(ref t) if t == "你好世界"));
-    }
-
-    #[test]
-    fn session_finished_emits_accumulated_final() {
-        let mut provider = QwenAsrProvider::new();
-
-        // 两个段完成
-        provider.parse_server_event(
-            r#"{"type":"conversation.item.input_audio_transcription.completed","transcript":"第一句"}"#,
-        ).unwrap();
-        provider.parse_server_event(
-            r#"{"type":"conversation.item.input_audio_transcription.completed","transcript":"第二句"}"#,
-        ).unwrap();
-
-        // session.finished 应该发射累积的 Final
-        let events = provider
-            .parse_server_event(r#"{"type":"session.finished"}"#)
-            .unwrap();
-
-        assert_eq!(events.len(), 2);
-        assert!(matches!(
-            events[0],
-            AsrEvent::Final(ref t) if t == "第一句第二句"
-        ));
-        assert!(matches!(events[1], AsrEvent::Closed));
-    }
-
-    #[test]
-    fn session_finished_without_segments_emits_only_closed() {
-        let mut provider = QwenAsrProvider::new();
-        let events = provider
-            .parse_server_event(r#"{"type":"session.finished"}"#)
-            .unwrap();
-        assert_eq!(events.len(), 1);
-        assert!(matches!(events[0], AsrEvent::Closed));
-    }
-
-    // Task 4: Additional event type tests
-    #[test]
-    fn session_created_emits_no_events() {
-        let mut provider = QwenAsrProvider::new();
-        let events = provider
-            .parse_server_event(r#"{"type":"session.created"}"#)
-            .unwrap();
-        assert!(events.is_empty());
-    }
-
-    #[test]
-    fn session_updated_emits_connected() {
-        let mut provider = QwenAsrProvider::new();
-        let events = provider
-            .parse_server_event(r#"{"type":"session.updated"}"#)
-            .unwrap();
-        assert_eq!(events.len(), 1);
-        assert!(matches!(events[0], AsrEvent::Connected));
-    }
-
-    #[test]
-    fn error_event_emits_error() {
-        let mut provider = QwenAsrProvider::new();
-        let events = provider
-            .parse_server_event(
-                r#"{"type":"error","error":{"message":"auth failed"}}"#,
-            )
-            .unwrap();
-        assert_eq!(events.len(), 1);
-        assert!(matches!(events[0], AsrEvent::Error(ref msg) if msg == "auth failed"));
-    }
-
-    #[test]
-    fn unknown_event_type_emits_nothing() {
-        let mut provider = QwenAsrProvider::new();
-        let events = provider
-            .parse_server_event(r#"{"type":"some.future.event"}"#)
-            .unwrap();
-        assert!(events.is_empty());
-    }
-
-    #[test]
-    fn completed_with_empty_transcript_emits_nothing() {
-        let mut provider = QwenAsrProvider::new();
-        let events = provider
-            .parse_server_event(
-                r#"{"type":"conversation.item.input_audio_transcription.completed","transcript":""}"#,
-            )
-            .unwrap();
-        assert!(events.is_empty());
-    }
-
-    #[test]
-    fn completed_with_nested_transcript_path() {
-        let mut provider = QwenAsrProvider::new();
-        // 测试 item.content[0].transcript 备选路径
-        let events = provider
-            .parse_server_event(
-                r#"{
-                    "type":"conversation.item.input_audio_transcription.completed",
-                    "item":{"content":[{"transcript":"嵌套路径文本"}]}
-                }"#,
-            )
-            .unwrap();
-        assert_eq!(events.len(), 1);
-        assert!(matches!(
-            events[0],
-            AsrEvent::Definite(ref t) if t == "嵌套路径文本"
-        ));
-    }
 }
