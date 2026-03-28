@@ -496,4 +496,89 @@ mod tests {
     fn strip_trailing_fillers_empty_string() {
         assert_eq!(super::strip_trailing_fillers(""), "");
     }
+
+    #[test]
+    fn interim_event_prepends_accumulated_text() {
+        let mut provider = QwenAsrProvider::new();
+
+        // 第一个段完成，累积 "今天天气"
+        let events = provider
+            .parse_server_event(
+                r#"{
+                "type":"conversation.item.input_audio_transcription.completed",
+                "transcript":"今天天气"
+            }"#,
+            )
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(events[0], AsrEvent::Definite(ref t) if t == "今天天气"));
+
+        // 第二个段的 Interim 应该包含已累积的文本
+        let events = provider
+            .parse_server_event(
+                r#"{
+                "type":"conversation.item.input_audio_transcription.text",
+                "text":"我们去",
+                "stash":"公园吧"
+            }"#,
+            )
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            events[0],
+            AsrEvent::Interim(ref t) if t == "今天天气我们去公园吧"
+        ));
+    }
+
+    #[test]
+    fn first_interim_has_no_prefix() {
+        let mut provider = QwenAsrProvider::new();
+        // 还没有任何段完成时，Interim 不应有前缀
+        let events = provider
+            .parse_server_event(
+                r#"{
+                "type":"conversation.item.input_audio_transcription.text",
+                "text":"你好",
+                "stash":"世界"
+            }"#,
+            )
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(events[0], AsrEvent::Interim(ref t) if t == "你好世界"));
+    }
+
+    #[test]
+    fn session_finished_emits_accumulated_final() {
+        let mut provider = QwenAsrProvider::new();
+
+        // 两个段完成
+        provider.parse_server_event(
+            r#"{"type":"conversation.item.input_audio_transcription.completed","transcript":"第一句"}"#,
+        ).unwrap();
+        provider.parse_server_event(
+            r#"{"type":"conversation.item.input_audio_transcription.completed","transcript":"第二句"}"#,
+        ).unwrap();
+
+        // session.finished 应该发射累积的 Final
+        let events = provider
+            .parse_server_event(r#"{"type":"session.finished"}"#)
+            .unwrap();
+
+        assert_eq!(events.len(), 2);
+        assert!(matches!(
+            events[0],
+            AsrEvent::Final(ref t) if t == "第一句第二句"
+        ));
+        assert!(matches!(events[1], AsrEvent::Closed));
+    }
+
+    #[test]
+    fn session_finished_without_segments_emits_only_closed() {
+        let mut provider = QwenAsrProvider::new();
+        let events = provider
+            .parse_server_event(r#"{"type":"session.finished"}"#)
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(events[0], AsrEvent::Closed));
+    }
 }
