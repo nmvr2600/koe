@@ -417,8 +417,15 @@ mod tests {
     use crate::event::AsrEvent;
 
     #[test]
-    fn parses_interim_preview_from_text_and_stash() {
+    fn interim_prepends_accumulated_text_to_preview() {
         let mut provider = QwenAsrProvider::new();
+
+        // 先完成一个段，累积 "前面的话"
+        provider.parse_server_event(
+            r#"{"type":"conversation.item.input_audio_transcription.completed","transcript":"前面的话"}"#,
+        ).unwrap();
+
+        // Interim 应该包含已累积文本 + 当前段预览
         let events = provider
             .parse_server_event(
                 r#"{
@@ -429,9 +436,10 @@ mod tests {
             )
             .unwrap();
 
+        assert_eq!(events.len(), 1);
         assert!(matches!(
             events.first(),
-            Some(AsrEvent::Interim(text)) if text == "今天天气不错"
+            Some(AsrEvent::Interim(text)) if text == "前面的话今天天气不错"
         ));
     }
 
