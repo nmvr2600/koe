@@ -183,6 +183,9 @@ static NSString *yamlWrite(NSString *yaml, NSString *keyPath, NSString *value) {
     NSInteger insertIdx = (NSInteger)lines.count;
 
     // Walk through parts[0..sectionCount-1] to find or create sections
+    // 追踪最深的部分匹配，防止在文件末尾创建重复的顶层段
+    NSInteger bestDepth = 0;
+    NSInteger bestInsertIdx = (NSInteger)lines.count;
     matchedDepth = 0;
     for (NSInteger i = 0; i < (NSInteger)lines.count; i++) {
         NSString *line = lines[i];
@@ -190,8 +193,25 @@ static NSString *yamlWrite(NSString *yaml, NSString *keyPath, NSString *value) {
         if (trimmed.length == 0 || [trimmed hasPrefix:@"#"]) continue;
 
         NSInteger lineIndent = yamlIndentLevel(line);
+        NSInteger prevDepth = matchedDepth;
         while (matchedDepth > 0 && lineIndent < requiredIndent[matchedDepth - 1] + 1) {
             matchedDepth--;
+        }
+
+        // 当 depth 下降时，记录最深匹配段的末尾作为插入位置
+        if (matchedDepth < prevDepth && prevDepth > bestDepth) {
+            bestDepth = prevDepth;
+            NSInteger secLine = lastMatchedSectionLine[prevDepth - 1];
+            bestInsertIdx = secLine + 1;
+            while (bestInsertIdx < (NSInteger)lines.count) {
+                NSString *nextLine = lines[bestInsertIdx];
+                NSString *nextTrimmed = [nextLine stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                if (nextTrimmed.length > 0 && ![nextTrimmed hasPrefix:@"#"]) {
+                    NSInteger nextIndent = yamlIndentLevel(nextLine);
+                    if (nextIndent <= requiredIndent[prevDepth - 1]) break;
+                }
+                bestInsertIdx++;
+            }
         }
 
         NSRange colonRange = [trimmed rangeOfString:@":"];
@@ -219,9 +239,17 @@ static NSString *yamlWrite(NSString *yaml, NSString *keyPath, NSString *value) {
                         }
                         insertIdx++;
                     }
+                    bestDepth = matchedDepth;
+                    bestInsertIdx = insertIdx;
                 }
             }
         }
+    }
+
+    // 使用最深的部分匹配来决定插入位置
+    if (bestDepth > matchedDepth) {
+        matchedDepth = bestDepth;
+        insertIdx = bestInsertIdx;
     }
 
     // Create missing parent sections
