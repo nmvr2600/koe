@@ -454,4 +454,46 @@ mod tests {
             Some(AsrEvent::Definite(text)) if text == "你好世界"
         ));
     }
+
+    // strip_trailing_fillers 函数测试
+    #[test]
+    fn strip_trailing_fillers_removes_single_trailing_filler() {
+        assert_eq!(super::strip_trailing_fillers("你好世界嗯"), "你好世界");
+    }
+
+    #[test]
+    fn strip_trailing_fillers_removes_multiple_trailing_fillers() {
+        assert_eq!(super::strip_trailing_fillers("你好世界嗯啊呃"), "你好世界");
+    }
+
+    #[test]
+    fn strip_trailing_fillers_removes_filler_with_trailing_punctuation() {
+        assert_eq!(super::strip_trailing_fillers("你好世界嗯，"), "你好世界");
+        assert_eq!(super::strip_trailing_fillers("你好世界啊。"), "你好世界");
+    }
+
+    #[test]
+    fn strip_trailing_fillers_does_not_remove_leading_fillers() {
+        assert_eq!(super::strip_trailing_fillers("嗯你好世界"), "嗯你好世界");
+    }
+
+    #[test]
+    fn strip_trailing_fillers_does_not_remove_mid_sentence_fillers() {
+        assert_eq!(super::strip_trailing_fillers("你好嗯世界"), "你好嗯世界");
+    }
+
+    #[test]
+    fn strip_trailing_fillers_preserves_normal_text() {
+        assert_eq!(super::strip_trailing_fillers("今天天气不错"), "今天天气不错");
+    }
+
+    #[test]
+    fn strip_trailing_fillers_all_fillers_returns_empty() {
+        assert_eq!(super::strip_trailing_fillers("嗯啊呃"), "");
+    }
+
+    #[test]
+    fn strip_trailing_fillers_empty_string() {
+        assert_eq!(super::strip_trailing_fillers(""), "");
+    }
 }
