@@ -14,7 +14,7 @@ I tried nearly every voice input app on the market. They were either paid, ugly,
 
 Koe takes a different approach:
 
-- **Minimal runtime UI.** Koe stays out of the way with a menu bar item, a small floating status pill during active sessions, and an optional built-in settings window when you actually need to configure it.
+- **Minimal runtime UI.** Koe stays out of the way with a menu bar item, a small floating status pill with native frosted-glass vibrancy during active sessions, and an optional built-in settings window when you actually need to configure it.
 - **All configuration lives in plain text files** under `~/.koe/`. You can edit them with any text editor, vim, a script, or the built-in settings UI.
 - **Dictionary is a plain `.txt` file.** No need to open an app and add words one by one through a GUI. Just edit `~/.koe/dictionary.txt` — one term per line. You can even use Claude Code or other AI tools to bulk-generate domain-specific terms.
 - **Changes take effect immediately.** Edit any config file and the new settings are used automatically. ASR, LLM, dictionary, and prompt changes apply on the next hotkey press. Hotkey changes are detected within a few seconds. No restart, no reload button.
@@ -66,9 +66,9 @@ The feed file lives at `docs/update-feed.json` and should contain at least:
 
 ```json
 {
-  "version": "1.0.9",
-  "build": 10,
-  "download_url": "https://github.com/missuo/koe/releases/download/v1.0.9/Koe-macOS-arm64.zip"
+  "version": "1.0.10",
+  "build": 11,
+  "download_url": "https://github.com/missuo/koe/releases/download/v1.0.10/Koe-macOS-arm64.zip"
 }
 ```
 
@@ -207,6 +207,11 @@ spacing, terminology, filler word removal). Koe currently supports
 **OpenAI-compatible APIs only** for this step. Native provider-specific APIs that
 are not OpenAI-compatible are not supported directly.
 
+The LLM HTTP client is shared across sessions with HTTP/2 support and connection
+pooling for lower latency. For GPT-5-style endpoints (using `max_completion_tokens`),
+Koe automatically sets `reasoning_effort: "none"` to skip unnecessary reasoning
+on the latency-sensitive correction path.
+
 ```yaml
 llm:
   # Set to false to skip LLM correction and paste raw ASR output directly.
@@ -268,7 +273,7 @@ feedback:
 ```yaml
 hotkey:
   # Trigger key for voice input.
-  # Options: fn | left_option | right_option | left_command | right_command
+  # Options: fn | left_option | right_option | left_command | right_command | left_control | right_control
   trigger_key: "fn"
   # Cancel key for aborting the current session.
   # Must be different from trigger_key.
@@ -282,6 +287,8 @@ hotkey:
 | `right_option` | Right Option | Least likely to conflict with shortcuts |
 | `left_command` | Left Command | May conflict with system shortcuts |
 | `right_command` | Right Command | Less conflict-prone than left Command |
+| `left_control` | Left Control | Available on all Mac keyboards |
+| `right_control` | Right Control | Only on full-size/external keyboards |
 
 Hotkey changes take effect automatically within a few seconds. The trigger key
 starts voice input, and the cancel key aborts the current session without output.
@@ -460,52 +467,7 @@ The two layers communicate via C FFI (Foreign Function Interface). The Rust core
 
 ## Contributing
 
-Contributions are welcome! Before you open a PR, please note:
-
-### Commit Convention
-
-All commits **must** follow the [Conventional Commits](https://www.conventionalcommits.org/) specification. We recommend using the [Ship](https://github.com/missuo/ship) skill to generate commit messages automatically:
-
-```bash
-npx skills add missuo/ship
-```
-
-Then simply run `/ship` in Claude Code (or any compatible AI coding agent) to stage, commit, and push with a properly formatted message.
-
-#### Commit Types
-
-| Type | When to use |
-|---|---|
-| `feat` | New functionality |
-| `fix` | Bug fixes |
-| `docs` | Documentation only |
-| `style` | Formatting, no logic changes |
-| `refactor` | Code restructuring without behavior change |
-| `perf` | Performance improvements |
-| `test` | Adding or updating tests |
-| `build` | Build system or dependency changes |
-| `ci` | CI/CD configuration |
-| `chore` | Maintenance tasks |
-
-#### Message Format
-
-```
-<type>(<scope>): <short summary>
-
-<optional body>
-
-<optional footer>
-```
-
-Scope is auto-detected from file paths (e.g., `asr`, `llm`, `ui`, `config`). Breaking changes must include a `BREAKING CHANGE:` footer.
-
-### Pull Request Guidelines
-
-- Keep PRs focused on a single purpose
-- Ensure the app still builds (`make build`)
-- Verify hold-to-talk and tap-to-toggle both work
-- Update docs if you changed any user-facing behavior
-- See the [Contributing Guide](https://koe.li/docs/contributing) for the full contributor workflow
+See [CONTRIBUTING.md](CONTRIBUTING.md) for commit conventions, PR guidelines, and the full contributor workflow.
 
 ## License
 
