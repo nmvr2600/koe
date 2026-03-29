@@ -40,3 +40,7 @@ koe-core/target/
 # Environment / secrets
 .env
 .env.*
+
+# Build artifacts
+Koe.app/
+dist/
