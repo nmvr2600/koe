@@ -4,7 +4,27 @@
 
 A lightweight, zen-like macOS voice input tool. Press a hotkey, speak, and the corrected text is pasted into whatever app you're using.
 
-> **Koe Zen** is a focused fork of [Koe](https://github.com/missuo/koe) that prioritizes simplicity and efficiency. No local ASR bloat — just pure cloud-based voice input that stays out of your way.
+---
+
+## About This Project
+
+**Koe Zen** is a fork of [Koe](https://github.com/missuo/koe).
+
+The original Koe is an excellent macOS voice input tool. We've built upon it with a different philosophy. The voice input software space is already crowded—big tech solutions, open-source alternatives, and various DIY tools are everywhere. We don't want to build yet another identical wheel; instead, we want to preserve the most essential, pure aspects of what makes Koe great.
+
+**Koe Zen's positioning is simple**: stay lightweight.
+
+The upstream version added local ASR (MLX, sherpa-onnx) support. While this adds power, the cost is significant: app size ballooned from 15MB to 86MB, and memory usage spiked from 20MB to nearly 2GB. For a background voice input tool, this resource consumption goes against the "small and beautiful" original intention.
+
+So we made some cuts:
+- ❌ Removed local ASR support (MLX, sherpa-onnx)
+- ✅ Kept cloud ASR (Doubao, Qwen) — fast, accurate, zero local resource usage
+- ✅ Kept practical features like menu bar Provider switching
+- ✅ Maintained ~15MB size, ~20MB memory footprint
+
+If you need local speech recognition (offline use, privacy-sensitive scenarios), we recommend using the upstream [Koe](https://github.com/missuo/koe) directly. If you just want a **lightweight, fast, unobtrusive** cloud-based voice input tool, Koe Zen might be a better fit for you.
+
+---
 
 ## The Name
 
