@@ -10,7 +10,7 @@ settings:
     PRODUCT_BUNDLE_IDENTIFIER: nz.owo.koe
     MACOSX_DEPLOYMENT_TARGET: "14.0"
     ENABLE_HARDENED_RUNTIME: YES
-    APP_UPDATE_FEED_URL: "https://raw.githubusercontent.com/missuo/koe/main/docs/update-feed.json"
+    APP_UPDATE_FEED_URL: "https://raw.githubusercontent.com/nmvr2600/koe/my-main/docs/update-feed.json"
 
 targetTemplates:
   KoeApp:
