@@ -24,6 +24,15 @@ So we made some cuts:
 
 If you need local speech recognition (offline use, privacy-sensitive scenarios), we recommend using the upstream [Koe](https://github.com/missuo/koe) directly. If you just want a **lightweight, fast, unobtrusive** cloud-based voice input tool, Koe Zen might be a better fit for you.
 
+## Improvements
+
+Beyond staying lightweight, Koe Zen includes several improvements tailored for Chinese users:
+
+- **Menu Bar Provider Switching** — Switch between Doubao (ByteDance) and Qwen (Alibaba) cloud ASR providers directly from the menu bar, no config file editing required
+- **Qwen ASR Support** — Full support for Alibaba Cloud DashScope real-time speech recognition (Qwen3-ASR-Realtime)
+- **Chinese-Optimized Configuration** — Default system prompts optimized for Chinese input, with better handling of Chinese punctuation, number conversion, and colloquial expressions
+- **China-Friendly Services** — Configuration templates provide direct integration parameters for Volcengine (Doubao) and Alibaba Cloud (Qwen)
+
 ---
 
 ## The Name
