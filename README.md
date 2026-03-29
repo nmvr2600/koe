@@ -1,18 +1,28 @@
-# Koe (声)
+# Koe Zen (声·禅)
 
-A background-first macOS voice input tool. Press a hotkey, speak, and the corrected text is pasted into whatever app you're using.
+A lightweight, zen-like macOS voice input tool. Press a hotkey, speak, and the corrected text is pasted into whatever app you're using.
+
+> **Koe Zen** is a focused fork of [Koe](https://github.com/missuo/koe) that prioritizes simplicity and efficiency. No local ASR bloat — just pure cloud-based voice input that stays out of your way.
 
 For more information, visit the documentation at **[koe.li](https://koe.li)**.
 
 ## The Name
 
-**Koe** (声, pronounced "ko-eh") is the Japanese word for *voice*. Written as こえ in hiragana, it's one of the most fundamental words in the language — simple, clear, and direct. That's exactly the philosophy behind this tool: your voice goes in, clean text comes out, with nothing in between. No flashy UI, no unnecessary steps. Just 声 — voice, in its purest form.
+**Koe** (声, pronounced "ko-eh") is the Japanese word for *voice*. Written as こえ in hiragana, it's one of the most fundamental words in the language — simple, clear, and direct.
 
-## Why Koe?
+**Zen** (禅) represents the mindset: no clutter, no bloat, no distractions. Just the essentials — your voice, cleanly transcribed, with minimal footprint.
+
+Koe Zen strips away the complexity to focus on what matters: fast, reliable voice input that respects your system resources.
+
+## Why Koe Zen?
 
 I tried nearly every voice input app on the market. They were either paid, ugly, or inconvenient — bloated UIs, clunky dictionary management, and too many clicks to do simple things.
 
-Koe takes a different approach:
+Koe Zen takes a different approach from the original Koe:
+
+- **No local ASR bloat.** Unlike upstream, Koe Zen uses only cloud-based ASR (Doubao, Qwen). No 80MB+ binaries, no 2GB memory spikes. Just ~15MB app size and ~20MB RAM.
+- **ASR Provider switching.** Quickly switch between cloud providers from the menu bar.
+- **Everything else you love.** All the simplicity, speed, and reliability of the original.
 
 - **Minimal runtime UI.** Koe stays out of the way with a menu bar item, a small floating status pill with native frosted-glass vibrancy during active sessions, and an optional built-in settings window when you actually need to configure it.
 - **All configuration lives in plain text files** under `~/.koe/`. You can edit them with any text editor, vim, a script, or the built-in settings UI.
