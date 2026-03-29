@@ -26,7 +26,7 @@ targetTemplates:
         INFOPLIST_FILE: Koe/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
         CODE_SIGN_ENTITLEMENTS: Koe/Koe.entitlements
-        PRODUCT_NAME: "Koe Zen"
+        PRODUCT_NAME: KoeZen
         HEADER_SEARCH_PATHS:
           - "$(inherited)"
           - "$(SRCROOT)/../koe-core/target"
