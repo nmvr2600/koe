@@ -8,7 +8,7 @@ name = "koe_core"
 crate-type = ["staticlib", "lib"]
 
 [features]
-default = ["mlx", "sherpa-onnx"]
+default = []
 mlx = ["koe-asr/mlx"]
 sherpa-onnx = ["koe-asr/sherpa-onnx"]
 
