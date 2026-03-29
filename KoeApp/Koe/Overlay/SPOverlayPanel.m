@@ -306,12 +306,14 @@ typedef NS_ENUM(NSInteger, SPOverlayMode) {
     // Clear interim text on any state change
     self.contentView.interimText = nil;
 
-    if ([state isEqualToString:@"idle"] || [state isEqualToString:@"completed"]) {
+    if ([state isEqualToString:@"idle"]) {
         self.sessionMaxWidth = 0;
         self.sessionMaxHeight = 0;
         [self hide];
         return;
     }
+    // completed 状态需要显示成功提示，不立即隐藏
+    // Rust 层会在短暂延迟后发送 idle 状态来触发隐藏
 
     NSString *text;
     NSColor *accent;
@@ -339,6 +341,11 @@ typedef NS_ENUM(NSInteger, SPOverlayMode) {
         text   = @"Pasting…";
         accent = [NSColor colorWithRed:0.3 green:0.85 blue:0.45 alpha:1.0];
         mode   = SPOverlayModeSuccess;
+    } else if ([state isEqualToString:@"completed"]) {
+        // 录音完成但没有检测到语音，明确提示用户
+        text   = @"No speech detected";
+        accent = [NSColor colorWithRed:0.6 green:0.6 blue:0.6 alpha:1.0];
+        mode   = SPOverlayModeNone;
     } else if ([state isEqualToString:@"error"] || [state isEqualToString:@"failed"]) {
         text   = @"Error";
         accent = [NSColor colorWithRed:1.0 green:0.32 blue:0.32 alpha:1.0];
@@ -435,11 +442,10 @@ typedef NS_ENUM(NSInteger, SPOverlayMode) {
 #pragma mark - Show / Hide
 
 - (void)show {
+    // 立即设置 alpha 值来中断任何正在进行的动画
+    // 防止之前的 hide 动画在延迟后覆盖当前的 show
+    [self.panel setAlphaValue:1.0];
     [self.panel orderFrontRegardless];
-    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *ctx) {
-        ctx.duration = kFadeInDuration;
-        self.panel.animator.alphaValue = 1.0;
-    }];
 }
 
 - (void)hide {

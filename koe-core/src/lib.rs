@@ -627,10 +627,14 @@ async fn run_session(
 
     let asr_text = aggregator.best_text().to_string();
     if asr_text.is_empty() {
-        log::warn!("[{session_id}] no ASR text available");
-        invoke_session_error("no speech recognized");
-        invoke_state_changed("failed");
+        // 用户没有说话就结束，这是正常行为，不应该报错
+        // 显示短暂的 "Done" 提示后消失，给用户明确的完成反馈
+        log::info!("[{session_id}] no speech detected, session completed");
+        invoke_state_changed("completed");
+        // 延迟 400ms 让用户看到完成状态，然后回到 idle
+        tokio::time::sleep(Duration::from_millis(400)).await;
         cleanup_session(&session_arc);
+        invoke_state_changed("idle");
         return;
     }
 
