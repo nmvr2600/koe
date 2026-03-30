@@ -16,6 +16,14 @@ build-rust:
 
 build-xcode:
 	cd KoeApp && xcodebuild -project Koe.xcodeproj -scheme Koe -configuration Release ARCHS=$(XCODE_ARCH) build
+	@$(MAKE) resign-app
+
+resign-app:
+	@APP_PATH=$$(cd KoeApp && xcodebuild -project Koe.xcodeproj -scheme Koe -configuration Release -showBuildSettings 2>/dev/null | grep ' BUILD_DIR' | head -1 | awk '{print $$3}')/Release/KoeZen.app; \
+	if [ -d "$$APP_PATH" ]; then \
+		echo "==> Resigning $$APP_PATH with local certificate..."; \
+		codesign --force --deep --sign "KoeZen Dev" "$$APP_PATH"; \
+	fi
 
 clean:
 	cargo clean
