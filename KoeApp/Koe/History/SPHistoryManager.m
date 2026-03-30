@@ -95,24 +95,25 @@
 
     for (NSUInteger i = 0; i < text.length; i++) {
         unichar ch = [text characterAtIndex:i];
+        chars++;
 
-        // CJK Unified Ideographs and extensions
+        // CJK Unified Ideographs and extensions — 每个中文字符算一个词
         if ((ch >= 0x4E00 && ch <= 0x9FFF) ||   // CJK Unified
             (ch >= 0x3400 && ch <= 0x4DBF) ||   // CJK Extension A
             (ch >= 0xF900 && ch <= 0xFAFF)) {   // CJK Compatibility
-            chars++;
             if (inWord) {
                 words++;
                 inWord = NO;
             }
+            words++;  // 每个中文字符算一个词
         } else if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
                    (ch >= '0' && ch <= '9') || ch == '\'') {
-            // Latin alphanumeric — part of a word
+            // 英文字母、数字 — 连续的算一个词
             if (!inWord) {
                 inWord = YES;
             }
         } else {
-            // Whitespace, punctuation, etc.
+            // 空格、标点等 — 结束当前英文单词
             if (inWord) {
                 words++;
                 inWord = NO;
