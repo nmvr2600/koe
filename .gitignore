@@ -44,3 +44,4 @@ koe-core/target/
 # Build artifacts
 Koe.app/
 dist/
+*.dmg
